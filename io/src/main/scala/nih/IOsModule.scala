@@ -118,7 +118,7 @@ trait IOsModule {
   }
 
   // Fiber
-  
+
   type Fiber[+Err, +Out]
 
   val Fiber: FiberModule
@@ -132,15 +132,15 @@ trait IOsModule {
   given FiberMethods: FiberMethods
   trait FiberMethods {
 
-    extension [Err, Out](fiber: Fiber[Err, Out])
+    extension [Err, Out](fiber: Fiber[Err, Out])(using Position)
 
-      def interrupt: IO[Any, Nothing, Either[Err, Out]]
+      def interrupt: IO[Any, Nothing, Unit]
 
-      def join: IO[Any, Err, Out]
+      def join[Err2 >: Err](onCancel: => Err2, onThrow: Throwable => Err2): IO[Any, Err2, Out]
     end extension
   }
 
   // TODO: Ref
-  
+
   // TODO: Resource?
 }

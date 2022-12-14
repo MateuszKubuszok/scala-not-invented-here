@@ -4,7 +4,7 @@ import scala.annotation.unchecked.uncheckedVariance
 
 class IOsZIOModule extends IOsModule {
 
-  private val cacheCanFail:           Conversion[Instantiable[Nothing], zio.CanFail[Any]] = _ => zio.CanFail
+  private val cacheCanFail:             Conversion[Instantiable[Nothing], zio.CanFail[Any]] = _ => zio.CanFail
   private inline given proveCanFail[E]: Conversion[Instantiable[E], zio.CanFail[E]]         = cacheCanFail
 
   override opaque type Position = zio.Trace
@@ -38,13 +38,13 @@ class IOsZIOModule extends IOsModule {
         success: Out => IO[In0, Err2, Out2]
       )(using Instantiable[Err]): IO[In0, Err2, Out2] = io.foldZIO(failure, success)
 
-      // TODO: fork
+      def fork: IO[In, Nothing, Fiber[Err, Out]] = io.fork
 
-      // TODO: memoize
+      def memoize: IO[Any, Nothing, IO[In, Err, Out]] = io.memoize
     end extension
   end IOMethods
 
-  final override opaque type Fiber[+Err, +Out] = zio.Fiber[Err@uncheckedVariance, Out@uncheckedVariance]
+  final override opaque type Fiber[+Err, +Out] = zio.Fiber[Err @uncheckedVariance, Out @uncheckedVariance]
   object Fiber extends FiberModule {
 
     override def interruptAll(fibers: Iterable[Fiber[Any, Any]]): IO[Any, Nothing, Unit] = ???
@@ -52,11 +52,11 @@ class IOsZIOModule extends IOsModule {
     override def joinAll[Err](fibers: Iterable[Fiber[Err, Any]]): IO[Any, Err, Unit] = ???
   }
   given FiberMethods: FiberMethods with
-    extension[Err, Out] (fiber: Fiber[Err, Out])
+    extension [Err, Out](fiber: Fiber[Err, Out])(using Position)
 
-      def interrupt: IO[Any, Nothing, Either[Err, Out]] = ???
+      def interrupt: IO[Any, Nothing, Unit] = fiber.interrupt.ignore
 
-      def join: IO[Any, Err, Out] = ???
+      def join[Err2 >: Err](onCancel: => Err2, onThrow: Throwable => Err2): IO[Any, Err2, Out] = ???
     end extension
   end FiberMethods
 }

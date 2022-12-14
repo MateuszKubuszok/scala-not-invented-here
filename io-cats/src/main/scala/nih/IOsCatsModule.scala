@@ -1,6 +1,7 @@
 package nih
 
 import cats.effect as ce
+import cats.syntax.either.*
 
 import scala.annotation.unchecked.uncheckedVariance
 
@@ -45,13 +46,23 @@ class IOsCatsModule extends IOsModule {
           case Right(out) => success(out)(in)
         }
 
-      // TODO: fork
+      def fork: IO[In, Nothing, Fiber[Err, Out]] = in =>
+        io(in)
+          .flatMap {
+            case Left(error)  => ce.IO.raiseError(FiberError(error))
+            case Right(value) => ce.IO.pure(value)
+          }
+          .start
+          .map(_.asRight[Nothing])
 
-      // TODO: memoize
+      // ???
+      def memoize: IO[Any, Nothing, IO[In, Err, Out]] = ???
     end extension
   end IOMethods
 
-  final override opaque type Fiber[+Err, +Out] = ce.Fiber[ce.IO, Err @uncheckedVariance, Out @uncheckedVariance]
+  private case class FiberError[E](e: E) extends Throwable with scala.util.control.NoStackTrace
+
+  final override opaque type Fiber[+Err, +Out] = ce.FiberIO[Out @uncheckedVariance]
   object Fiber extends FiberModule {
 
     override def interruptAll(fibers: Iterable[Fiber[Any, Any]]): IO[Any, Nothing, Unit] = ???
@@ -59,11 +70,17 @@ class IOsCatsModule extends IOsModule {
     override def joinAll[Err](fibers: Iterable[Fiber[Err, Any]]): IO[Any, Err, Unit] = ???
   }
   given FiberMethods: FiberMethods with
-    extension [Err, Out](fiber: Fiber[Err, Out])
+    extension [Err, Out](fiber: Fiber[Err, Out])(using Position)
 
-      def interrupt: IO[Any, Nothing, Either[Err, Out]] = ???
+      def interrupt: IO[Any, Nothing, Unit] = _ => fiber.cancel.map(_.asRight[Nothing])
 
-      def join: IO[Any, Err, Out] = ???
+      def join[Err2 >: Err](onCancel: => Err2, onThrow: Throwable => Err2): IO[Any, Err2, Out] = _ =>
+        fiber.join.flatMap[Either[Err2, Out]] {
+          case ce.Outcome.Canceled()                 => ce.IO(onCancel.asLeft[Out])
+          case ce.Outcome.Errored(FiberError(error)) => ce.IO.pure(error.asInstanceOf[Err2].asLeft[Out])
+          case ce.Outcome.Errored(error)             => ce.IO.pure(onThrow(error).asLeft[Out])
+          case ce.Outcome.Succeeded(io)              => io.map(_.asInstanceOf[Out].asRight[Err2])
+        }
     end extension
   end FiberMethods
 }
