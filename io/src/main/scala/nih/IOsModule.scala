@@ -23,7 +23,6 @@ trait IOsModule {
 
   given PositionMethods: PositionMethods
   trait PositionMethods {
-
     extension (position: Position)
       def location: String
       def file:     String
@@ -42,26 +41,29 @@ trait IOsModule {
 
     def failure[Err](err: Err)(using Position): IO[Any, Err, Nothing]
 
-    // TODO: never
+    def never(using Position): IO[Any, Nothing, Nothing]
 
-    // TODO: unit
+    def fromEither[Err, Out](either: => Either[Err, Out])(using Position): IO[Any, Err, Out]
 
-    // TODO: apply
+    def fromOption[Err, Out](option: => Option[Out], onNone: => Err)(using Position): IO[Any, Err, Out]
 
-    // TODO: fromEither
-
-    // TODO: fromOption
+    def fromTry[Out](tryy: => scala.util.Try[Out])(using Position): IO[Any, Throwable, Out]
 
     // TODO: sequence
 
     // TODO: raceAll
 
     // TODO: suspend
+
+    final def unit(using Position): IO[Any, Nothing, Unit] = success(())
+
+    final def ref[A](a: => A)(using Position): IO[Any, Nothing, Ref[A]] = Ref.of(a)
+
+    final def local[A](a: => A)(using Position): Scope[Any, Nothing, Local[A]] = Local.of(a)
   }
 
   given IOMethods: IOMethods
   trait IOMethods {
-
     extension [In, Err, Out](io: IO[In, Err, Out])(using Position)
 
       // abstract
@@ -105,7 +107,7 @@ trait IOsModule {
 
       // TODO: mapBoth
 
-      // TODO: flatten
+      // TODO: flatten/flattenError/flattenBoth
 
       // TODO: zip
 
@@ -131,7 +133,6 @@ trait IOsModule {
 
   given FiberMethods: FiberMethods
   trait FiberMethods {
-
     extension [Err, Out](fiber: Fiber[Err, Out])(using Position)
 
       def interrupt: IO[Any, Nothing, Unit]
@@ -140,7 +141,74 @@ trait IOsModule {
     end extension
   }
 
-  // TODO: Ref
+  // Ref
+
+  type Ref[A]
+
+  val Ref: RefModule
+  trait RefModule { this: Ref.type =>
+
+    def of[A](a: => A)(using Position): IO[Any, Nothing, Ref[A]]
+  }
+
+  given RefMethods: RefMethods
+  trait RefMethods {
+    extension [A](ref: Ref[A])(using Position)
+
+      def get: IO[Any, Nothing, A]
+
+      def modify[B](f: A => (A, B)): IO[Any, Nothing, B]
+
+      def getAndUpdate(f: A => A): IO[Any, Nothing, A] = modify(a => (f(a), a))
+
+      def updateAndGet(f: A => A): IO[Any, Nothing, A] = modify { a =>
+        val newA = f(a)
+        (newA, newA)
+      }
+    end extension
+  }
+
+  // Local
+
+  type Local[A]
+
+  val Local: LocalModule
+  trait LocalModule { this: Local.type =>
+
+    // TODO: fork-join from zio.FibelRef
+    def of[A](value: => A)(using Position): Scope[Any, Nothing, Local[A]]
+
+    // TODO: IOGlobal
+    def fromCurrentThreadUnsafe[A](local: Local[A])(using Position): A = ???
+  }
+
+  given LocalMethods: LocalMethods
+  trait LocalMethods {
+    extension [A](local: Local[A])(using Position)
+
+      def get: IO[Any, Nothing, A]
+
+      def set(a: A): IO[Any, Nothing, Unit]
+    end extension
+  }
+
+  // Scope
 
   // TODO: Resource?
+  type Scope[-In, +Err, +Out]
+
+  val Scope: ScopeModule
+  trait ScopeModule { this: Scope.type =>
+
+  }
+
+  given ScopeMethods: ScopeMethods
+  trait ScopeMethods {
+    extension[In, Err, Out] (scope: Scope[In, Err, Out])(using Position)
+
+      def todo: Unit = ()
+    end extension
+  }
+
+  // TODO: Stream
 }

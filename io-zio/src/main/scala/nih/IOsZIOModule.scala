@@ -30,6 +30,17 @@ class IOsZIOModule extends IOsModule {
     override def success[Out](out: Out)(using Position): IO[Any, Nothing, Out] = zio.ZIO.succeed(out)
 
     override def failure[Err](err: Err)(using Position): IO[Any, Err, Nothing] = zio.ZIO.fail(err)
+
+    override def never(using Position): IO[Any, Nothing, Nothing] = zio.ZIO.never
+
+    override def fromEither[Err, Out](either: => Either[Err, Out])(using Position): IO[Any, Err, Out] =
+      zio.ZIO.fromEither(either)
+
+    override def fromOption[Err, Out](option: => Option[Out], onNone: => Err)(using Position): IO[Any, Err, Out] =
+      zio.ZIO.fromOption(option).mapError(_ => onNone)
+
+    override def fromTry[Out](tryy: => scala.util.Try[Out])(using Position): IO[Any, Throwable, Out] =
+      zio.ZIO.fromTry(tryy)
   }
   given IOMethods: IOMethods with
     extension [In, Err, Out](io: IO[In, Err, Out])(using Position)
@@ -59,4 +70,38 @@ class IOsZIOModule extends IOsModule {
       def join[Err2 >: Err](onCancel: => Err2, onThrow: Throwable => Err2): IO[Any, Err2, Out] = ???
     end extension
   end FiberMethods
+
+  final override type Ref[A] = zio.Ref[A]
+  object Ref extends RefModule {
+
+    override def of[A](a: => A)(using Position): IO[Any, Nothing, Ref[A]] = zio.Ref.make(a)
+  }
+  given RefMethods: RefMethods with
+    extension [A](ref: Ref[A])(using Position)
+
+      def get: IO[Any, Nothing, A] = ref.get
+
+      def modify[B](f: A => (A, B)): IO[Any, Nothing, B] = ref.modify(f(_).swap)
+    end extension
+  end RefMethods
+
+  final override type Local[A] = zio.FiberRef[A]
+  object Local extends LocalModule {
+
+    override def of[A](value: => A)(using Position): Scope[Any, Nothing, Local[A]] = zio.FiberRef.make(value)
+  }
+  given LocalMethods: LocalMethods with
+    extension [A](local: Local[A])(using Position)
+
+      def get: IO[Any, Nothing, A] = local.get
+
+      def set(a: A): IO[Any, Nothing, Unit] = local.set(a)
+    end extension
+  end LocalMethods
+
+  final override type Scope[-In, +Err, +Out] = zio.ZIO[In & zio.Scope, Err, Out]
+  object Scope extends ScopeModule {}
+  given ScopeMethods: ScopeMethods with
+    def nope(): Unit = ()
+  end ScopeMethods
 }
